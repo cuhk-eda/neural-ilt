@@ -23,7 +23,7 @@ More details are in the following papers:
 ## Usage
 **Step 1:** Download the source codes. For example,
 ~~~bash
-$ git clone https://github.com/InfamousMeGa/Neural-ILT.git
+$ git clone https://github.com/cuhk-eda/neural-ilt.git
 ~~~
 
 **Step 2:** Go to the project root and unzip the environment
