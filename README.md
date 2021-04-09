@@ -33,7 +33,8 @@ $ unzip env.zip
 ~~~
 (Optional) To replace the ICCAD'20 training dataset with the ISPD'21 training dataset (last batch)
 ~~~bash
-$ unzip dataset/ispd21_train_dataset.zip
+$ cd Neural-ILT/dataset/
+$ unzip ispd21_train_dataset.zip
 ~~~
 
 **Step 3:** Conduct Neural-ILT on [ICCAD 2013 mask optimization contest benchmarks](https://ieeexplore.ieee.org/document/6691131)
