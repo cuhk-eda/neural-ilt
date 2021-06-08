@@ -324,7 +324,7 @@ def run_neural_ilt_ibm_bench():
         margin=image_para["bbox_margin"],
         scale_dim_w=image_para["scale_size"],
         scale_dim_h=image_para["scale_size"],
-        read_ref=True,
+        read_ref=False,
     )
     refine_data_loader = DataLoader(
         dataset=refine_dataset, num_workers=0, batch_size=1, shuffle=False
@@ -383,7 +383,7 @@ def run_neural_ilt_ibm_ext_bench():
         margin=image_para["bbox_margin"],
         scale_dim_w=image_para["scale_size"],
         scale_dim_h=image_para["scale_size"],
-        read_ref=True,
+        read_ref=False,
     )
     refine_data_loader = DataLoader(
         dataset=refine_dataset, num_workers=0, batch_size=1, shuffle=False
