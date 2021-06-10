@@ -17,6 +17,8 @@ from neural_ilt_backbone import ILTNet
 parser = argparse.ArgumentParser(description="take parameters")
 parser.add_argument("--gpu_no", type=int, default=0)
 parser.add_argument("--load_model_name", type=str, default="iccad_32nm_m1_wts.pth")
+parser.add_argument("--beta", type=float, default=1.2)
+parser.add_argument("--select_by_obj", type=str2bool, default=True)
 args = parser.parse_args()
 
 
@@ -48,6 +50,7 @@ class Neural_ILT_Wrapper:
         self.gamma = exp_para["gamma"]
         self.refine_iter_num = exp_para["refine_iter_num"]
         self.step_size = exp_para["step_size"]
+        self.select_by_obj = exp_para["select_by_obj"]
         self.max_l2 = 1e15
         if exp_para["max_l2"]:
             self.max_l2 = exp_para["max_l2"]
@@ -186,7 +189,9 @@ class Neural_ILT_Wrapper:
                     loss.backward()
                     self.optimizer_ft.step()
 
-                    cur_loss = my_beta * cplx_loss.item() + l2_loss.item()
+                    cur_loss = my_beta * cplx_loss.item() + l2_loss.item() # select best solution by objective score = alpha * l2_loss + beta * cplx_loss
+                    if not self.select_by_obj: # select best solution by printability score = l2_loss + cplx_loss
+                        cur_loss = cplx_loss.item() + l2_loss.item()
                     if cur_loss < best_loss and l2_loss.item() < self.max_l2:
                         best_loss = cur_loss
                         best_l2_loss = l2_loss.item()
@@ -292,17 +297,18 @@ def run_neural_ilt_ibm_bench():
     exp_para = {
         "device": "cuda:%s" % args.gpu_no if torch.cuda.is_available() else "cpu",
         "phase": "test",
-        "beta": 1.5, # hyper-parameter for cplx_loss
+        "beta": args.beta, # hyper-parameter for cplx_loss
         "lr": 2e-3,
         "gamma": 0.1,
         "refine_iter_num": 60,
         "step_size": 35,
-        "max_l2": 100000,
+        "max_l2": 95000,
         "save_mask": True,
         "dynamic_beta": False,
         # "ilt_model_path": os.path.join("models/unet/", "iccad_32nm_m1_wts.pth"),
         "ilt_model_path": os.path.join("models/unet/", args.load_model_name),
         "data_set_name": "ICCAD2013-IBM-Benchmark",
+        "select_by_obj": args.select_by_obj,
     }
 
     image_para = {
@@ -362,6 +368,7 @@ def run_neural_ilt_ibm_ext_bench():
         "dynamic_beta": False,
         "ilt_model_path": os.path.join("models/unet/", args.load_model_name),
         "data_set_name": "ICCAD2013-IBM-ext-Benchmark",
+        "select_by_obj": args.select_by_obj,
     }
 
     image_para = {
@@ -408,5 +415,6 @@ def run_neural_ilt_ibm_ext_bench():
 
 
 if __name__ == "__main__":
-    run_neural_ilt_ibm_bench()
-    # run_neural_ilt_ibm_ext_bench()
+    print(args)
+    # run_neural_ilt_ibm_bench()
+    run_neural_ilt_ibm_ext_bench()
