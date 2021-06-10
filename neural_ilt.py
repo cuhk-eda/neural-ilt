@@ -416,5 +416,5 @@ def run_neural_ilt_ibm_ext_bench():
 
 if __name__ == "__main__":
     print(args)
-    # run_neural_ilt_ibm_bench()
-    run_neural_ilt_ibm_ext_bench()
+    run_neural_ilt_ibm_bench()
+    # run_neural_ilt_ibm_ext_bench()
