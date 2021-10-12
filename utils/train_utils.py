@@ -70,10 +70,10 @@ def train_cycle_model(model, alpha, beta, optimizer, scheduler, dataloaders, dev
 
                 # Forward
                 with torch.set_grad_enabled(phase == 'train'):
-                    loss_right, outputs = model(inputs, layouts, new_cord)
+                    loss_right, outputs, _ = model(inputs, layouts, new_cord)
                     loss_left = calc_loss_l2(outputs, labels, metrics)
                     sig_out = sigmoid_layer(outputs)
-                    cplx_loss = cplx_loss_layer(sig_out, layouts, new_cord)
+                    cplx_loss, _ = cplx_loss_layer(sig_out, layouts, new_cord)
                     
                     # Domain specific training recipe for Neural-ILT, section 3.5 (Jiang et al., ICCAD'20):
                     #       Loss = supervised_loss_term + \alpha * ilt_loss_term + \beta * cplx_loss_term

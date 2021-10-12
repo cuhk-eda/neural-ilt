@@ -2,7 +2,7 @@ import os, time, argparse
 from utils.utils import str2bool, dir_parser
 
 import torch
-torch.manual_seed(0)
+torch.manual_seed(1)
 
 import torch.nn as nn
 import torch.optim as optim
@@ -42,13 +42,13 @@ parser.add_argument(
 parser.add_argument(
     "--margin",
     type=int,
-    default=128,
+    default=256,
     help="The margin of the crop bbox, i.e., corp_bbox_size = max(margin + bbox_size_w, margin + bbox_size_h)",
 )
 parser.add_argument(
     "--read_ref",
     type=str2bool,
-    default=True,
+    default=False,
     help="Read the pre-computed crop bbox for each layout from csv file",
 )
 

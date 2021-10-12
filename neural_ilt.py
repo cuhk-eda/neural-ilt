@@ -17,7 +17,7 @@ from neural_ilt_backbone import ILTNet
 parser = argparse.ArgumentParser(description="take parameters")
 parser.add_argument("--gpu_no", type=int, default=0)
 parser.add_argument("--load_model_name", type=str, default="iccad_32nm_m1_wts.pth")
-parser.add_argument("--beta", type=float, default=1.2)
+parser.add_argument("--beta", type=float, default=1.45)
 parser.add_argument("--select_by_obj", type=str2bool, default=True)
 args = parser.parse_args()
 
@@ -52,8 +52,11 @@ class Neural_ILT_Wrapper:
         self.step_size = exp_para["step_size"]
         self.select_by_obj = exp_para["select_by_obj"]
         self.max_l2 = 1e15
+        self.max_epe = 1e5
         if exp_para["max_l2"]:
             self.max_l2 = exp_para["max_l2"]
+        if exp_para["max_epe"]:
+            self.max_epe = exp_para["max_epe"]
 
         print("-------- Loading Neural-ILT Model & Data --------")
 
@@ -105,6 +108,7 @@ class Neural_ILT_Wrapper:
             self.weight,
             self.weight_def,
             cplx_obj=False,
+            report_epe=True,
             in_channels=1,
         ).to(self.device)
 
@@ -164,6 +168,7 @@ class Neural_ILT_Wrapper:
             y2 = y2_[0].item()
             layout_name = layout_name[0].split(".")[0]
 
+            best_epe_vios = 1e5
             best_loss = 1e15
             best_l2_loss = 1e15
             best_iter = 0
@@ -176,11 +181,11 @@ class Neural_ILT_Wrapper:
                 self.optimizer_ft.zero_grad()
                 with torch.set_grad_enabled(True):
                     # Forward inference of Neural-ILT, calculate the corresponding losses
-                    l2_loss, masks = self.refine_backbone_model(
+                    l2_loss, masks, epe_violation = self.refine_backbone_model(
                         inputs, labels, new_cord
                     )
                     sig_masks = torch.sigmoid(masks)
-                    cplx_loss = self.cplx_loss_layer(sig_masks, labels, new_cord)
+                    cplx_loss, _ = self.cplx_loss_layer(sig_masks, labels, new_cord)
 
                     # The on-neural-network ILT correction (backward of gradient)
                     loss = l2_loss.div(inputs.size(0)) + cplx_loss.mul(my_beta).div(
@@ -189,23 +194,26 @@ class Neural_ILT_Wrapper:
                     loss.backward()
                     self.optimizer_ft.step()
 
+                    cur_epe_vios = epe_violation.item()
                     cur_loss = my_beta * cplx_loss.item() + l2_loss.item() # select best solution by objective score = alpha * l2_loss + beta * cplx_loss
                     if not self.select_by_obj: # select best solution by printability score = l2_loss + cplx_loss
                         cur_loss = cplx_loss.item() + l2_loss.item()
-                    if cur_loss < best_loss and l2_loss.item() < self.max_l2:
+                    update_best = cur_epe_vios <= best_epe_vios and cur_loss <  best_loss # consider EPE violation concurrently
+                    if update_best and l2_loss.item() < self.max_l2 and cur_epe_vios < self.max_epe:
                         best_loss = cur_loss
                         best_l2_loss = l2_loss.item()
+                        best_epe_vios = cur_epe_vios
                         best_cplx_loss = cplx_loss.item()
                         best_iter = iteration
                         best_masks = masks.detach()
                         best_counter = 0
                     else:
                         best_counter += 1
-                    if best_counter > 15 and iteration > 25: # Early break if needed
+                    if best_counter > 20 and iteration > 25: # Early break if needed
                         break
                     if iteration % 2 == 0:
                         print(
-                            "time: %.2fs\tImage_num: [%d/%d]\titer: [%d/%d]\tobj_loss: %.2f\tl2_loss: %.2f\tcplx_loss: %.2f"
+                            "time: %.2fs\tImage_num: [%d/%d]\titer: [%d/%d]\tobj_loss: %.2f\tl2_loss: %.2f\tcplx_loss: %.2f\tepe_vio: %d"
                             % (
                                 (time.time() - iter_since),
                                 (idx + 1),
@@ -215,6 +223,7 @@ class Neural_ILT_Wrapper:
                                 loss.item(),
                                 l2_loss.item(),
                                 cplx_loss.item(),
+                                cur_epe_vios
                             )
                         )
                         iter_since = time.time()
@@ -226,6 +235,7 @@ class Neural_ILT_Wrapper:
             online_train_loss_list[layout_name + "_total_loss"] = [
                 best_loss,
                 best_l2_loss,
+                best_epe_vios,
                 best_cplx_loss,
                 cur_runtime,
             ]
@@ -252,7 +262,7 @@ class Neural_ILT_Wrapper:
                 print("Saving best mask in %s" % best_image_path)
                 torchvision.utils.save_image(mask_origin, best_image_path)
             print(
-                "ImageName: %s\tTime: %.2fs\tbest_iter: %.2f\tbest_loss-> total:%.2f,\tl2:%.2f,\tcplx:%.2f"
+                "ImageName: %s\tTime: %.2fs\tbest_iter: %.2f\tbest_loss-> total:%.2f,\tl2:%.2f,\tcplx:%.2f,\tEPEV:%d"
                 % (
                     layout_name,
                     cur_runtime,
@@ -260,37 +270,42 @@ class Neural_ILT_Wrapper:
                     best_loss,
                     best_l2_loss,
                     best_cplx_loss,
+                    best_epe_vios
                 )
             )
 
         print("\nTotal Time: %.4fs\n" % (time.time() - start_time))
         for key in online_train_loss_list:
             print(
-                "%s: total:%d\tl2:%d\tcplx:%d\truntime:%.4f"
+                "%s: total:%d\tl2:%d\tepev:%d\tcplx:%d\truntime:%.4f"
                 % (
                     key,
                     online_train_loss_list[key][0],
                     online_train_loss_list[key][1],
                     online_train_loss_list[key][2],
                     online_train_loss_list[key][3],
+                    online_train_loss_list[key][4],
                 )
             )
         l2_list = []
+        epe_list = []
         pv_list = []
         runtime_list = []
         for key in sorted(online_train_loss_list):
             l2_list.append(online_train_loss_list[key][1])
-            pv_list.append(online_train_loss_list[key][2])
-            runtime_list.append(online_train_loss_list[key][3])
+            epe_list.append(online_train_loss_list[key][2])
+            pv_list.append(online_train_loss_list[key][3])
+            runtime_list.append(online_train_loss_list[key][4])
         l2_avg = np.array(l2_list).mean()
+        epe_avg = np.array(epe_list).mean()
         pv_avg = np.array(pv_list).mean()
         runtime_avg = np.array(runtime_list).mean()
         print(
-            "Average L2 Loss: %.4f\tPVBand: %.4f\tRun Time:%.4f"
-            % (l2_avg, pv_avg, runtime_avg)
+            "Average L2 Loss: %.4f\tPVBand: %.4f\tEPEV: %.4f\tRun Time:%.4f"
+            % (l2_avg, pv_avg, epe_avg, runtime_avg)
         )
 
-        return l2_avg, pv_avg, runtime_avg
+        return l2_avg, pv_avg, epe_avg, runtime_avg
 
 
 def run_neural_ilt_ibm_bench():
@@ -303,6 +318,7 @@ def run_neural_ilt_ibm_bench():
         "refine_iter_num": 60,
         "step_size": 35,
         "max_l2": 95000,
+        "max_epe": 55,
         "save_mask": True,
         "dynamic_beta": False,
         # "ilt_model_path": os.path.join("models/unet/", "iccad_32nm_m1_wts.pth"),
@@ -337,7 +353,7 @@ def run_neural_ilt_ibm_bench():
     )
 
     # Conduct on-neural-network ILT correction for the ICCAD-2013 IBM contest dataset
-    l2_avg, pv_avg, runtime_avg = nerual_ilt.neural_ilt_correction(refine_data_loader)
+    l2_avg, pv_avg, epe_avg, runtime_avg = nerual_ilt.neural_ilt_correction(refine_data_loader)
 
     # Report results, baselines quoted from GAN-OPC (Yang et al., TCAD'20)
     mosaic_avg = [44012.7, 50899.5, 788.5]
@@ -358,12 +374,13 @@ def run_neural_ilt_ibm_ext_bench():
     exp_para = {
         "device": "cuda:%s" % args.gpu_no if torch.cuda.is_available() else "cpu",
         "phase": "test",
-        "beta": 1.0,
+        "beta": args.beta,
         "lr": 2e-3,
         "gamma": 0.1,
         "refine_iter_num": 60,
         "step_size": 35,
         "max_l2": 150000,
+        "max_epe": 75,
         "save_mask": True,
         "dynamic_beta": False,
         "ilt_model_path": os.path.join("models/unet/", args.load_model_name),
@@ -397,7 +414,7 @@ def run_neural_ilt_ibm_ext_bench():
     )
 
     # Conduct on-neural-network ILT correction for the ICCAD-2013 IBM ext dataset
-    l2_avg, pv_avg, runtime_avg = nerual_ilt.neural_ilt_correction(refine_data_loader)
+    l2_avg, pv_avg, epe_avg, runtime_avg = nerual_ilt.neural_ilt_correction(refine_data_loader)
 
     # Report results, baselines quoted from Neural-ILT 2.0 (Jiang et al., in submission to TCAD)
     mosaic_avg = [90486.3, 109842.7, 455]

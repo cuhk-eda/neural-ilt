@@ -30,6 +30,7 @@ class ILTNet(nn.Module):
         weight_def,
         cycle_mode=False,
         cplx_obj=False,
+        report_epe=False,
         in_channels=1,
     ):
         super(ILTNet, self).__init__()
@@ -60,7 +61,9 @@ class ILTNet(nn.Module):
             weight_def,
             cycle_mode=cycle_mode,
             cplx_obj=cplx_obj,
+            report_epe=report_epe
         )
+        self.report_epe = report_epe
 
     def forward(self, x, y, new_cord):
         conv1 = self.dconv_down1(x)
@@ -100,4 +103,9 @@ class ILTNet(nn.Module):
         # Calculate the ILT loss with respect to the predicted mask
         out_loss = self.ilt_loss_layer(x, y, new_cord)
 
-        return out_loss, mask
+        if self.report_epe:
+            out_loss, epe_violation = self.ilt_loss_layer(x, y, new_cord)
+            return out_loss, mask, epe_violation
+        else:
+            out_loss, placeholder = self.ilt_loss_layer(x, y, new_cord)
+            return out_loss, mask, placeholder

@@ -1,4 +1,5 @@
 import lithosim.lithosim_cuda as litho
+from utils.epe_checker import get_epe_checkpoints
 import torch, torchvision
 import numpy as np
 import os 
@@ -30,7 +31,7 @@ def compute_common_term(mask, target, kernels, weight, dose=1.0, gamma=4.0, thet
     return common_term
 
 def compute_gradient(mask, target, kernels, kernels_ct, weight, 
-                    dose=1.0, gamma=4.0, theta_z=50, theta_m=4, avgpool_size=None):
+                    dose=1.0, gamma=4.0, theta_z=50, theta_m=4, epe_offset = 15, avgpool_size=None):
     r"""
     Main function of ILT loss gradient calculation
     Args:
@@ -45,6 +46,15 @@ def compute_gradient(mask, target, kernels, kernels_ct, weight,
     """
     common_term = compute_common_term(mask, target, kernels, weight, dose, gamma, theta_z, theta_m)
 
+    checkpoints = get_epe_checkpoints((target.detach().data.cpu().numpy()[0][0] * 255).astype(np.uint8))
+    mask_epe_roi = torch.zeros((mask.shape[0], mask.shape[1], mask.shape[2], mask.shape[3]),
+                               dtype=mask.dtype, layout=mask.layout, device=mask.device)
+    # mask_epe_roi = target                       
+    for cp in checkpoints['h_pts']:
+        mask_epe_roi[:, :, (cp[1]-epe_offset):(cp[1]+epe_offset), cp[0]] = 1
+    for cp in checkpoints['v_pts']:
+        mask_epe_roi[:, :, cp[1], (cp[0]-epe_offset):(cp[0]+epe_offset)] = 1
+    
     mask_convolve_kernel_ct_output = litho.convolve_kernel(mask, kernels_ct, weight, dose) #[1 * H * W]
     mask_convolve_kernel_ct_output = mask_convolve_kernel_ct_output * common_term # real_part = real_part * common_term, imagine_part = imagine_part * common_term
 
@@ -52,14 +62,22 @@ def compute_gradient(mask, target, kernels, kernels_ct, weight,
     kernels_flip = torch.flip(kernels, [1,2])
     kernels_ct_flip = torch.flip(kernels_ct, [1,2])
     gradient_right_term = litho.convolve_kernel(mask_convolve_kernel_ct_output, kernels_flip, weight, dose).real #[1 * H * W], take the real part
-    
+    gradient_right_term_epe = gradient_right_term * mask_epe_roi  # [1 * H * W], take the real part
+
     mask_convolve_kernel_output = litho.convolve_kernel(mask, kernels, weight, dose) #[1 * H * W]
     mask_convolve_kernel_output = mask_convolve_kernel_output * common_term # real_part = real_part * common_term, imagine_part = imagine_part * common_term
     gradient_left_term = litho.convolve_kernel(mask_convolve_kernel_output, kernels_ct_flip, weight, dose).real #[1 * H * W], take the real part
+    gradient_left_term_epe = gradient_left_term * mask_epe_roi  # [1 * H * W], take the real part
 
+    sigma = 2
     constant = gamma * theta_z * theta_m
+    constant_epe = gamma * theta_z * theta_m * sigma
     discrete_penalty_mask = 0.025 * (-8 * mask + 4) # From the MOSAIC's (GAO et al. DAC'14) source code
+    discrete_penalty_mask_epe = 0.025 * (-8 * mask * mask_epe_roi + 4) * sigma
     gradient = (constant * (gradient_right_term + gradient_left_term) + theta_m * discrete_penalty_mask) * mask * (1 - mask)
+    gradient_epe = (constant_epe * (gradient_right_term_epe + gradient_left_term_epe) +
+                    theta_m * discrete_penalty_mask_epe) * mask * (1 - mask)
+    gradient += gradient_epe
 
     if avgpool_size is not None:
         avg_layer = torch.nn.AvgPool2d(

@@ -3,6 +3,8 @@ import torch.nn as nn
 import utils.ilt_utils as ilt
 from torch.autograd import Function
 import lithosim.lithosim_cuda as litho
+from utils.epe_checker import report_epe_violations, get_epe_checkpoints
+import numpy as np
 import os
 
 class ilt_loss_function(Function):
@@ -55,7 +57,7 @@ class ilt_loss_scale_function(Function):
         [input_size, input_size] -> [cropped_bbox_size, cropped_bbox_size] -> [original_size, original_size] -> [cropped_bbox_size, cropped_bbox_size] -> [input_size, input_size]
     """
     @staticmethod
-    def forward(ctx, mask_pred, target, kernels, kernels_ct, kernel_def, kernel_def_ct, weight, weight_def, new_cord, cycle_mode=False, cplx_obj=False):
+    def forward(ctx, mask_pred, target, kernels, kernels_ct, kernel_def, kernel_def_ct, weight, weight_def, new_cord, cycle_mode=False, cplx_obj=False, report_epe=False):
         lx, ly, rx, ry = new_cord
         output_litho_l2_loss = True
 
@@ -108,30 +110,39 @@ class ilt_loss_scale_function(Function):
         new_cord = torch.stack((new_cord[0], new_cord[1], new_cord[2], new_cord[3]), dim=0)
         cycle_mode = torch.tensor(cycle_mode)
         cplx_obj = torch.tensor(cplx_obj)
-        ctx.save_for_backward(mask_pred_sig_backup, target, kernels, kernels_ct, kernel_def, kernel_def_ct, weight, weight_def, new_cord, cycle_mode, cplx_obj)
+        ctx.save_for_backward(mask_pred_sig_backup, target, kernels, kernels_ct, kernel_def, kernel_def_ct, weight, weight_def, new_cord, cycle_mode, cplx_obj, torch.tensor(report_epe))
+
+        if report_epe:
+            checkpoints = get_epe_checkpoints((target.detach().data.cpu().numpy()[0][0] * 255).astype(np.uint8))
+            epe_violation = report_epe_violations((bin_mask.detach().data.cpu().numpy()[0][0] * 255).astype(np.uint8), checkpoints)
+            epe_violation = torch.tensor(epe_violation, requires_grad=False)
+        place_holder = -1
+        place_holder = torch.tensor(place_holder)
 
         if output_litho_l2_loss:
             # l2_loss is easier for us to monitor the training and on-nn-ilt correction, it is NOT the exact forward loss of ilt_loss_layer
-            return l2_loss
+            if report_epe:
+                return l2_loss, epe_violation
+            return l2_loss, place_holder
         else:
             # The exact ILT forward loss
-            return ilt_loss
+            return ilt_loss, place_holder
 
     @staticmethod
-    def backward(ctx, grad_output):
-        mask_pred_sig, target, kernels, kernels_ct, kernel_def, kernel_def_ct, weight, weight_def, new_cord, _, cplx_obj = ctx.saved_tensors
+    def backward(ctx, grad_output, place_holder):
+        mask_pred_sig, target, kernels, kernels_ct, kernel_def, kernel_def_ct, weight, weight_def, new_cord, _, cplx_obj, _ = ctx.saved_tensors
         new_cord = [new_cord[0], new_cord[1], new_cord[2], new_cord[3]]
         
         grad_input = ilt.compute_gradient_scale(mask_pred_sig, target, kernels, kernels_ct, kernel_def, kernel_def_ct, weight, weight_def, new_cord, cplx_obj.item())
         grad_input = grad_input * 2 # NOTE: backward for bit_mask_to_two_value_mask function
 
-        return grad_output * grad_input, None, None, None, None, None, None, None, None, None, None
+        return grad_output * grad_input, None, None, None, None, None, None, None, None, None, None, None
 
 class ilt_loss_layer(nn.Module):
     r"""
     The ILT loss layer of Neural-ILT
     """
-    def __init__(self, kernels, kernels_ct, kernel_def, kernel_def_ct, weight, weight_def, cycle_mode=False, cplx_obj=False):
+    def __init__(self, kernels, kernels_ct, kernel_def, kernel_def_ct, weight, weight_def, cycle_mode=False, cplx_obj=False, report_epe=False):
         super(ilt_loss_layer, self).__init__()
 
         self.kernels = kernels
@@ -142,6 +153,7 @@ class ilt_loss_layer(nn.Module):
         self.weight_def = weight_def
         self.cycle_mode = cycle_mode
         self.cplx_obj = cplx_obj
+        self.report_epe = report_epe
     
     def forward(self, preds, target, new_cord=None):
         if new_cord is None:
@@ -149,4 +161,4 @@ class ilt_loss_layer(nn.Module):
         else: 
             # Scale up original input from [N * C * 512 * 512] to [N * C * 2048 * 2048] and call ilt to get the gradient
             # Backward gradient size is [N * C * 512 * 512], which is the same as input
-            return ilt_loss_scale_function.apply(preds, target, self.kernels, self.kernels_ct, self.kernel_def, self.kernel_def_ct, self.weight, self.weight_def,new_cord, self.cycle_mode, self.cplx_obj)
+            return ilt_loss_scale_function.apply(preds, target, self.kernels, self.kernels_ct, self.kernel_def, self.kernel_def_ct, self.weight, self.weight_def,new_cord, self.cycle_mode, self.cplx_obj, self.report_epe)
