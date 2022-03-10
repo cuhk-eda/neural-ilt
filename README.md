@@ -10,7 +10,7 @@ Compared to the conventional academia ILT solutions, e.g., [MOSAIC](https://ieee
 More details are in the following papers:
 * Jiang, Bentian, Lixin Liu, Yuzhe Ma, Hang Zhang, Bei Yu, and Evangeline FY Young. "[Neural-ILT: migrating ILT to neural networks for mask printability and complexity co-optimization](https://ieeexplore.ieee.org/abstract/document/9256592)", in 2020 IEEE/ACM International Conference On Computer Aided Design (ICCAD), pp. 1-9. IEEE, 2020.
 * Jiang, Bentian, Xiaopeng Zhang, Lixin Liu, and Evangeline FY Young. "[Building up End-to-end Mask Optimization Framework with Self-training](https://dl.acm.org/doi/abs/10.1145/3439706.3447050)", in Proceedings of the 2021 International Symposium on Physical Design (ISPD), pp. 63-70. 2021.
-* In submission to IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems (TCAD).
+* Jiang, Bentian, Lixin Liu, Yuzhe Ma, Bei Yu, and Evangeline FY Young. "[Neural-ILT 2.0: Migrating ILT to Domain-specific and Multi-task-enabled Neural Network.](https://ieeexplore.ieee.org/abstract/document/9526856)" IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems (2021).
 
 ## Requirements
 -   python: [3.7.3](https://www.python.org/downloads/)
@@ -111,6 +111,13 @@ If Neural-ILT is useful for your research, please consider citing the following 
   booktitle={Proceedings of the 2021 International Symposium on Physical Design},
   pages={63--70},
   year={2021}
+}
+@article{jiang2021neural,
+  title={Neural-ILT 2.0: Migrating ILT to Domain-specific and Multi-task-enabled Neural Network},
+  author={Jiang, Bentian and Liu, Lixin and Ma, Yuzhe and Yu, Bei and Young, Evangeline FY},
+  journal={IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems},
+  year={2021},
+  publisher={IEEE}
 }
 ```
 
