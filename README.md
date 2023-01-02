@@ -19,6 +19,7 @@ More details are in the following papers:
 -   cudatoolkit: [11.1.1](https://developer.nvidia.com/cuda-toolkit)
 -   pillow: [6.1.0](https://pypi.org/project/Pillow/)
 -   GPU: >= 10GB GPU memory for pretrain, >= 7GB for Neural-ILT
+-   [This repo passes the test on a linux machine of Ubuntu 18.04.6 LTS (GNU/Linux 4.15.0-158-generic x86_64) & CUDA Version: 11.4]
 
 ## Usage
 **Step 1:** Download the source codes. For example,
