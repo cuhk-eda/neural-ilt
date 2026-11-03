@@ -95,7 +95,7 @@ class Neural_ILT_Wrapper:
             self.device
         )
         self.load_in_backone_model.load_state_dict(
-            torch.load(self.exp_para["ilt_model_path"], map_location=self.device)
+            torch.load(self.exp_para["ilt_model_path"], map_location=self.device, weights_only=True)
         )
 
         # Init the Neural-ILT backbone model
